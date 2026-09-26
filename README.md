@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 # AssessorIA
 
 Assistente financeiro e de compromissos baseado em um sistema multiagentes, com API em FastAPI, orquestração em LangGraph e interface web em HTML, CSS e JavaScript.
@@ -196,7 +195,3 @@ Use um identificador de sessão diferente para uma nova conversa. O botão de no
 O `.gitignore` exclui credenciais locais, ambientes virtuais, caches, logs e formatos comuns de backup. Mantenha o `.env.example` versionado com valores fictícios e não inclua dados pessoais em exemplos, PDFs ou dumps.
 
 As regras do `.gitignore` não removem arquivos que já tenham sido rastreados pelo Git. Antes de publicar, confira os arquivos incluídos no commit e o histórico existente.
-=======
-# assessoria
-Sistema multiagentes para assessorar suas finanças e agenda. Trabalho escolar a fim de entender a arquitetura de multiagentes e boas práticas de desenvolvimento da IA.
->>>>>>> 80d8972e157190e4f13ecfac2a45fff07ccf8cca
