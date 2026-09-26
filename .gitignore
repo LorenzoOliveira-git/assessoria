@@ -1,0 +1,48 @@
+# Credenciais e configuracoes locais (o exemplo deve ser versionado)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+
+# Ambientes virtuais Python
+.venv/
+venv/
+env/
+ENV/
+
+# Arquivos gerados pelo Python e ferramentas
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+build/
+dist/
+*.egg-info/
+
+# Logs, temporarios e copias locais de bancos
+*.log
+logs/
+*.tmp
+*.bak
+*.dump
+*.backup
+*.sqlite
+*.sqlite3
+backups/
+
+# Configuracoes pessoais de editores e sistema operacional
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+Desktop.ini
