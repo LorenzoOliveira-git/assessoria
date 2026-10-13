@@ -12,6 +12,8 @@ from app.tools.financeiro import TOOLS
 from app.tools.faq import faq_retriever
 from app.tools.memoria import TOOLS_MEMORIA
 from app.tools.perfil import TOOLS_PERFIL
+from app.tools.agenda import TOOLS_AGENDA
+from app.tools.calendario_google import TOOLS_GOOGLE
 from typing import Literal
 from pydantic import BaseModel, Field
 
@@ -36,6 +38,6 @@ class RouterDecision(BaseModel):
 # JSON Schema usa a saída estruturada nativa do Groq, sem qualquer tool exposta.
 router_app       = llm_rapido.with_structured_output(RouterDecision, method="json_schema")
 financeiro_app   = create_agent(model=llm_especialista, tools=TOOLS+TOOLS_MEMORIA+TOOLS_PERFIL, system_prompt=FINANCEIRO_PROMPT_COMPLETO)
-agenda_app       = create_agent(model=llm_especialista, system_prompt=AGENDA_PROMPT_COMPLETO, tools=TOOLS_MEMORIA)
+agenda_app       = create_agent(model=llm_especialista, system_prompt=AGENDA_PROMPT_COMPLETO, tools=TOOLS_AGENDA+TOOLS_MEMORIA+TOOLS_GOOGLE)
 orquestrador_app = create_agent(model=llm_rapido,       system_prompt=ORQUESTRADOR_PROMPT_COMPLETO)
 faq_app          = create_agent(model=llm_rapido,       tools=[faq_retriever], system_prompt=FAQ_PROMPT_COMPLETO)

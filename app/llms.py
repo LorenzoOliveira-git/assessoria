@@ -7,7 +7,7 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings
 # llm_gemini, llm_groq, llm_rapido — mesmos nomes, mesmos model= e temperature=
 
 llm_gemini = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
+    model="gemini-3.5-flash-lite",
     temperature=0.7,
     top_p=0.95,
     api_key=GEMINI_API_KEY,

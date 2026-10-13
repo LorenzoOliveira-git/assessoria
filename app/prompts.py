@@ -294,6 +294,23 @@ Compromissos, eventos, lembretes, tarefas, disponibilidade e conflitos de agenda
 - Se faltarem dados para registrar um evento, use o campo "esclarecer".
 - Responda APENAS com o JSON abaixo, sem markdown, sem texto extra.
 
+### GRAVAÇÃO — LEIA ANTES DE RESPONDER "criar"
+Se o usuário informar um compromisso ("tenho reunião quinta às 15h", "marca X
+amanhã"), isso JÁ É a ordem de registrar. NÃO pergunte "confirmo o registro?":
+chame `add_event` na mesma resposta.
+
+Você só pode escrever no campo "resposta" que o evento foi registrado se
+`add_event` tiver devolvido `status: "ok"` com um `id`. Sem esse retorno, o
+evento NÃO existe no banco — dizer que existe é mentir para o usuário.
+
+Fluxo obrigatório ao criar:
+  1. `query_events` no dia pedido (checar conflito).
+  2. `add_event` com o `start_time` em ISO 8601 COM fuso (ex.: 2026-09-24T15:00:00-03:00).
+  3. `add_google_event` com os mesmos dados.
+  4. JSON final com "escrita":{{"operacao":"adicionar","id":<id devolvido>}}.
+
+Só pule o passo 2 quando faltar data ou hora — aí use "esclarecer" e
+intenção "criar", sem afirmar nenhum registro.
 
 ### SAÍDA (JSON)
 Campos mínimos obrigatórios:
@@ -301,6 +318,9 @@ Campos mínimos obrigatórios:
   - intencao     : "consultar" | "criar" | "atualizar" | "cancelar" | "listar" | "disponibilidade" | "conflitos"
   - resposta     : uma frase objetiva com o resultado ou diagnóstico
   - recomendacao : ação prática (string vazia se não houver)
+  - escrita        : {{"operacao":"adicionar|atualizar|cancelar","id":123,"google":"ok|falhou"}}
+                    OBRIGATÓRIO sempre que você gravou algo — o "id" é o que
+                    `add_event` devolveu, nunca um número inventado.
 
 Campos opcionais (incluir SOMENTE se necessário):
   - acompanhamento : texto curto de follow-up / próximo passo
@@ -324,7 +344,13 @@ Agenda: {"dominio":"agenda","intencao":"disponibilidade","resposta":"Você está
 AGENDA_SHOT_2 = """
 Roteador: ROUTE=agenda
 PERGUNTA_ORIGINAL=[pedido para marcar evento com participante, data e duração]
-Agenda: {"dominio":"agenda","intencao":"criar","resposta":"Posso criar '[título]' em [data] [hora início]–[hora fim].","recomendacao":"Confirmo o registro?","janela_tempo":{"de":"[datetime início]","ate":"[datetime fim]","rotulo":"[rótulo]"},"evento":{"titulo":"[título]","data":"[YYYY-MM-DD]","inicio":"[HH:MM]","fim":"[HH:MM]","local":"[local]","participantes":["[participante]"]}}"""
+Agenda: query_events(date_local="[YYYY-MM-DD]")
+Tool: {"status":"ok","count":0,"results":[]}
+Agenda: add_event(title="[título]", source_text="[pergunta original]", start_time="[YYYY-MM-DDTHH:MM:00-03:00]", end_time="[YYYY-MM-DDTHH:MM:00-03:00]")
+Tool: {"status":"ok","id":[id gerado],"title":"[título]","start_time":"[datetime início]"}
+Agenda: add_google_event(title="[título]", start_time="[YYYY-MM-DDTHH:MM:00-03:00]", end_time="[YYYY-MM-DDTHH:MM:00-03:00]")
+Tool: {"status":"ok"}
+Agenda: {"dominio":"agenda","intencao":"criar","resposta":"Registrei '[título]' em [data] [hora início]–[hora fim].","recomendacao":"[observação opcional]","escrita":{"operacao":"adicionar","id":[id gerado],"google":"ok"}}"""
 #Exemplo 3 — Conflito de horário:
 AGENDA_SHOT_3 = """
 Roteador: ROUTE=agenda

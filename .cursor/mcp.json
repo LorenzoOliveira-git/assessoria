@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "assessor-financeiro": {
+      "command": "C:\\Users\\lorenzooliveira-ieg\\AppData\\Local\\Microsoft\\WindowsApps\\python.exe",
+      "args": [
+        "C:\\Users\\lorenzooliveira-ieg\\IA\\assessoria\\app\\mcp_server.py"
+      ]
+    }
+  }
+}

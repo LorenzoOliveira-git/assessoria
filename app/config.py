@@ -18,6 +18,15 @@ DATABASE_URL   = os.getenv("DATABASE_URL")
 MONGODB_URI    = os.getenv("MONGODB_URI")
 QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
 QDRANT_CLUSTER_ENDPOINT = os.getenv("QDRANT_CLUSTER_ENDPOINT")
+GOOGLE_OAUTH_CREDENTIALS = os.getenv(
+    "GOOGLE_OAUTH_CREDENTIALS",
+    str(BASE_DIR / "gcp-oauth.keys.json"),
+)
+GOOGLE_CALENDAR_MCP_URL = os.getenv(
+    "GOOGLE_CALENDAR_MCP_URL",
+    "https://calendarmcp.googleapis.com/mcp/v1",
+)
+GOOGLE_CALENDAR_ACCESS_TOKEN = os.getenv("GOOGLE_CALENDAR_ACCESS_TOKEN")
 
 
 OBRIGATORIAS = {

@@ -6,6 +6,7 @@ from app.agents import router_app, financeiro_app, agenda_app, orquestrador_app,
 from langgraph.checkpoint.memory import MemorySaver
 # from event_tools import TOOLS_AGENDA
 from app.memory import salvar_mensagem
+from app.observabilidade import abrir_turno, fechar_turno, status_do_estado
 
 from app.guardrail import guardrail_entrada,guardrail_saida,anonimizar_entrada
 
@@ -62,17 +63,18 @@ def no_roteador(estado: Estado, config: RunnableConfig) -> dict:
 # NÓ ORQUESTRADOR — wrapper para capturar agentes_chamados via rota
 # ==============================================================================
 
-def no_orquestrador(estado: Estado) -> dict:
+def no_orquestrador(estado: Estado, config: RunnableConfig) -> dict:
     # Pega a última resposta do especialista (última AIMessage com conteúdo)
     ultima_especialista = ""
     for mensagem in reversed(estado["messages"]):
         if mensagem.type == "ai" and mensagem.content:
             ultima_especialista = mensagem.content
             break
-    
+    # config segue o mesmo motivo do roteador: sem ele, o modelo deste nó
+    # não herda o metadata do grafo (e o registro de observabilidade perde o nó).
     saida = orquestrador_app.invoke({
-        "messages": {"role": "human", "content": ultima_especialista}
-    })
+        "messages": [{"role": "human", "content": ultima_especialista}]
+    }, config=config)
 
     return {
         "agentes_chamados": ["orquestrador"],
@@ -172,26 +174,41 @@ fluxo_agentes = grafo.compile(checkpointer=memory)
 # ==============================================================================
 # FLUXO PRINCIPAL
 # ==============================================================================
-def executar_fluxo_assessor(user_id: str, pergunta_usuario: str, session_id: str) -> str:
-    texto_anonimizado, mapa = anonimizar_entrada(pergunta_usuario)
-
+def executar_fluxo_assessor(
+    pergunta_usuario: str, session_id: str, user_id: str = "usuario_teste"
+) -> str:
+    pergunta_usuario_anonimizado, _ = anonimizar_entrada(pergunta_usuario)
     estado_inicial = {
-            "messages":         [{"role": "human", "content": pergunta_usuario}],
-            "agentes_chamados": [],
-            "rota":             "",
-        } 
+        "messages":         [{"role": "human", "content": pergunta_usuario}],
+        "agentes_chamados": [],
+        "rota":             "",
+        "mapa_pii":         {},
+        "session_id":       session_id,
 
-    estado_final = fluxo_agentes.invoke(
+    }
+
+    # O registro abre antes do invoke e fecha no finally, inclusive quando
+    # o grafo levanta. A rota /monitor só lê o que ficou anotado.
+    turno_id = abrir_turno()
+    status = "erro"
+    rota = ""
+    try:
+        estado_final = fluxo_agentes.invoke(
             estado_inicial,
-            config={"configurable": {"thread_id": session_id, "user_id":user_id}},
-        )       
-    
-    resposta = estado_final["messages"][-1].text
+            config={"configurable": {"thread_id": session_id, "user_id": user_id}},
+        )
 
-    salvar_mensagem(user_id=user_id,session_id=session_id,role="human",content=texto_anonimizado)
-    salvar_mensagem(user_id=user_id,session_id=session_id,role="assistant",content=resposta)
-    
-    return resposta
+        resposta = estado_final["messages"][-1].text
+
+        # Salva no MongoDB após cada interação
+        salvar_mensagem(session_id, "human",     pergunta_usuario_anonimizado, user_id=user_id)
+        salvar_mensagem(session_id, "assistant", resposta, user_id=user_id)
+
+        status = status_do_estado(estado_final)
+        rota = estado_final.get("rota") or ""
+        return resposta
+    finally:
+        fechar_turno(turno_id, session_id=session_id, rota=rota, status=status)
 
 # ==============================================================================
 # LOOP

@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from app.routes import chat, perfil, session
+from app.routes import chat, perfil, session, monitor
 from app.config import validar_config
 from fastapi.middleware.cors import CORSMiddleware
 from app.config import FRONTEND_DIR
@@ -34,6 +34,7 @@ def health() -> dict:
 app.include_router(chat.router)
 app.include_router(session.router)
 app.include_router(perfil.router)
+app.include_router(monitor.router)
 
 if (FRONTEND_DIR / "index.html").exists():
     from fastapi.staticfiles import StaticFiles

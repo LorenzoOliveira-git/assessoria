@@ -766,4 +766,4 @@ def update_transaction(
 
     
 # Exporta a lista de tools
-TOOLS = [add_transaction,search_transactions,saldo_total,saldo_diario]
+TOOLS = [add_transaction,search_transactions,saldo_total,saldo_diario, update_transaction]
