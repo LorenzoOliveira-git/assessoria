@@ -7,6 +7,7 @@ from langgraph.checkpoint.memory import MemorySaver
 # from event_tools import TOOLS_AGENDA
 from app.memory import salvar_mensagem
 from app.observabilidade import abrir_turno, fechar_turno, status_do_estado
+from app.juiz import _coleta, _julgar_jev, _publicar, FRASE_SEGURA
 
 from app.guardrail import guardrail_entrada,guardrail_saida,anonimizar_entrada
 
@@ -57,7 +58,16 @@ def no_roteador(estado: Estado, config: RunnableConfig) -> dict:
         "rota":             decisao.route,
         # Histórico limpo: o especialista vai ler só a conversa real
     }
-    
+
+def no_juiz(estado: dict) -> dict:
+    pergunta, resposta, evidencia = _coleta(estado)
+    if not resposta:
+        return {"agentes_chamados": ["juiz:sem_resposta"]}
+    try:
+        return _julgar_jev(pergunta, resposta, evidencia)
+    except Exception as exc:
+        print(f"[juiz] erro {exc}")
+        return _publicar(FRASE_SEGURA, "erro", resposta)
 
 # ==============================================================================
 # NÓ ORQUESTRADOR — wrapper para capturar agentes_chamados via rota
@@ -138,6 +148,7 @@ grafo.add_node("financeiro",   financeiro_app)   # subgrafo direto — checkpoin
 grafo.add_node("agenda",       agenda_app)        # subgrafo direto
 grafo.add_node("faq",          faq_app)           # subgrafo direto
 grafo.add_node("orquestrador", no_orquestrador)
+grafo.add_node("juiz", no_juiz)
 grafo.add_node("guardrail_saida",no_guardrail_saida)
 
 grafo.set_entry_point("guardrail_entrada")
@@ -162,10 +173,11 @@ grafo.add_conditional_edges(
     }
 )
 
+
 grafo.add_edge("financeiro",   "orquestrador")
 grafo.add_edge("agenda",       "orquestrador")
 grafo.add_edge("orquestrador", "guardrail_saida")
-grafo.add_edge("guardrail_saida",END)
+grafo.add_edge("guardrail_saida","juiz")
 grafo.add_edge("faq",          END)
 
 memory = MemorySaver()

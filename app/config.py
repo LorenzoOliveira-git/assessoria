@@ -27,6 +27,7 @@ GOOGLE_CALENDAR_MCP_URL = os.getenv(
     "https://calendarmcp.googleapis.com/mcp/v1",
 )
 GOOGLE_CALENDAR_ACCESS_TOKEN = os.getenv("GOOGLE_CALENDAR_ACCESS_TOKEN")
+TYPESAFE_API_KEY = os.getenv("TYPESAFE_API_KEY")
 
 
 OBRIGATORIAS = {

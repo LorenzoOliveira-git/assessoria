@@ -6,11 +6,11 @@ API, e a API lê o que este módulo anotou enquanto o grafo rodava.
 
 Cada chamada de modelo (Gemini ou Groq) deixa: nome do modelo, tokens, custo
 e latência. Cada mensagem do usuário deixa: rota, status e a soma das chamadas
-daquele turno. O preço é uma tabela fixa, a mesma publicada pelos provedores
-em outubro de 2026 — o centavo pode divergir do LangSmith, que usa a tabela dele.
+daquele turno. O preço é uma tabela fixa, conforme os preços publicados pelos
+provedores em outubro de 2026 — o centavo pode divergir do LangSmith, que usa a tabela dele.
 
 Preços por 1 milhão de tokens (entrada, saída), em dólar:
-  gemini-2.5-flash     0,30 / 2,50   texto, ai.google.dev/pricing
+  gemini-3.5-flash-lite 0,30 / 2,50 texto, ai.google.dev/gemini-api/docs/pricing
   openai/gpt-oss-120b  0,15 / 0,60   Groq, console.groq.com/docs/models
 
 A saída do Gemini inclui os tokens de raciocínio, como na tabela do Google.
@@ -33,13 +33,13 @@ _FUSO = ZoneInfo("America/Sao_Paulo")
 
 # USD por 1 milhão de tokens: (entrada, saída).
 PRECO_POR_MILHAO: dict[str, tuple[float, float]] = {
-    "gemini-2.5-flash": (0.30, 2.50),
+    "gemini-3.5-flash-lite": (0.30, 2.50),
     "openai/gpt-oss-120b": (0.15, 0.60),
 }
 
 # O especialista promete Gemini. Groq neste nó é o with_fallbacks de llms.py.
 _NOS_ESPECIALISTA = {"financeiro", "agenda"}
-_MODELO_ESPECIALISTA = "gemini-2.5-flash"
+_MODELO_ESPECIALISTA = "gemini-3.5-flash-lite"
 
 LIMITE_TURNOS = 50
 LIMITE_P95_MS = 8_000
