@@ -7,7 +7,7 @@ from langgraph.checkpoint.memory import MemorySaver
 # from event_tools import TOOLS_AGENDA
 from app.memory import salvar_mensagem
 from app.observabilidade import abrir_turno, fechar_turno, status_do_estado
-from app.juiz import _coleta, _julgar_jev, _publicar, FRASE_SEGURA
+from app.juiz import coleta, julgar_jev, _publicar, FRASE_SEGURA
 
 from app.guardrail import guardrail_entrada,guardrail_saida,anonimizar_entrada
 
@@ -60,11 +60,11 @@ def no_roteador(estado: Estado, config: RunnableConfig) -> dict:
     }
 
 def no_juiz(estado: dict) -> dict:
-    pergunta, resposta, evidencia = _coleta(estado)
+    pergunta, resposta, evidencia = coleta(estado)
     if not resposta:
         return {"agentes_chamados": ["juiz:sem_resposta"]}
     try:
-        return _julgar_jev(pergunta, resposta, evidencia)
+        return julgar_jev(pergunta, resposta, evidencia)
     except Exception as exc:
         print(f"[juiz] erro {exc}")
         return _publicar(FRASE_SEGURA, "erro", resposta)

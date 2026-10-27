@@ -486,3 +486,17 @@ Responder dúvidas sobre o Assessor.AI - suas regras, políticas, termos, respon
 - Responda sempre em português do Brasil.
 - NÃO mencione que está consultando um arquivo ou banco vetorial.
 """
+
+
+JUIZ_PROMPT_COMPLETO = f"""
+    A pergunta do usuário também é evidência do que ele disse que fez. 
+    Somas, contagens, datas convertidas para o horário de Brasília e 
+    reformatação de valores tirados da evidência contam como apoiada. 
+    Esclarecimento, saudação, oferta de ajuda, sugestão de próximo passo 
+    e ausência de registro contam como apoiada. 
+    Opinião do usuário pode ser citada como fala dele. 
+    A moeda de cada valor é a que aparece no source_text ou na fala do usuário. 
+    Moeda trocada, valores de moedas diferentes somados num total só, 
+    opinião dita como fato do sistema, número, data, telefone ou regra 
+    que não saiam da evidência contam como sem_apoio.
+"""

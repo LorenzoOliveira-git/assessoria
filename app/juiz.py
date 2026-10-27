@@ -7,25 +7,10 @@ import json
 import urllib.error
 import urllib.request
 
-from app.config import TYPESAFE_API_KEY
+from app.config import TYPESAFE_API_KEY, JEV_URL, JEV_MODELO, LIMIAR
+from app.prompts import JUIZ_PROMPT_COMPLETO
 
-JEV_URL = "https://api.typesafe.ai/v1/systemone"
-JEV_MODELO = "jev-latest"
-LIMIAR = 0.70
 FRASE_SEGURA = "Não tenho evidência para afirmar isso."
-
-REGRAS = (
-    "A pergunta do usuário também é evidência do que ele disse que fez. "
-    "Somas, contagens, datas convertidas para o horário de Brasília e "
-    "reformatação de valores tirados da evidência contam como apoiada. "
-    "Esclarecimento, saudação, oferta de ajuda, sugestão de próximo passo "
-    "e ausência de registro contam como apoiada. "
-    "Opinião do usuário pode ser citada como fala dele. "
-    "A moeda de cada valor é a que aparece no source_text ou na fala do usuário. "
-    "Moeda trocada, valores de moedas diferentes somados num total só, "
-    "opinião dita como fato do sistema, número, data, telefone ou regra "
-    "que não saiam da evidência contam como sem_apoio."
-)
 
 
 def _texto(mensagem) -> str:
@@ -43,7 +28,7 @@ def _texto(mensagem) -> str:
     return str(conteudo or "")
 
 
-def _coleta(estado):
+def coleta(estado):
     pergunta = ""
     resposta = ""
     evidencias = []
@@ -78,7 +63,7 @@ def _publicar(texto, rotulo, resposta_original):
     }
 
 
-def _julgar_jev(pergunta, resposta, evidencia):
+def julgar_jev(pergunta, resposta, evidencia):
     if not TYPESAFE_API_KEY:
         return _publicar(FRASE_SEGURA, "sem_chave", resposta)
     corpo = json.dumps({
@@ -87,7 +72,7 @@ def _julgar_jev(pergunta, resposta, evidencia):
             "pergunta": pergunta,
             "resposta": resposta,
             "evidencia": evidencia,
-            "regras": REGRAS,
+            "regras": JUIZ_PROMPT_COMPLETO,
         },
         "questions": {
             "veredito": {

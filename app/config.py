@@ -27,7 +27,12 @@ GOOGLE_CALENDAR_MCP_URL = os.getenv(
     "https://calendarmcp.googleapis.com/mcp/v1",
 )
 GOOGLE_CALENDAR_ACCESS_TOKEN = os.getenv("GOOGLE_CALENDAR_ACCESS_TOKEN")
+
+# Configurando o JEV
 TYPESAFE_API_KEY = os.getenv("TYPESAFE_API_KEY")
+JEV_URL = "https://api.typesafe.ai/v1/systemone"
+JEV_MODELO = "jev-latest"
+LIMIAR = 0.70
 
 
 OBRIGATORIAS = {
