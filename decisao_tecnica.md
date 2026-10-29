@@ -48,14 +48,66 @@ O contexto das operações existe apenas na memória do turno. Chamadas idêntic
 
 ## 2. Caminhos considerados e não adotados
 
-| Caminho | Como funcionaria neste grafo | Vantagem real | Custo real e motivo da exclusão |
-|---|---|---|---|
-| Julgar cada tool antes de executá-la | Cada chamada de escrita consultaria o JEV antes do `INSERT`, `UPDATE` ou evento. | A decisão ocorreria perto de cada ação; uma recusa impediria aquela ação imediatamente. | Um pedido com três escritas exigiria três avaliações adicionais. Além da latência e das possíveis falhas de rede, essas avaliações isoladas não examinariam a resposta final do orquestrador. O juiz já existente continuaria necessário. |
-| Manter uma transação SQL aberta durante todo o grafo | As tools escreveriam dentro de uma transação iniciada antes do especialista; o juiz decidiria entre `commit` e `rollback`. | O banco poderia desfazer as três escritas locais após uma recusa. | A conexão e os bloqueios de linhas permaneceriam ocupados enquanto modelos, guardrail e JEV respondessem. Isso amplia contenção e tempo de espera em pedidos concorrentes. O Google Calendar continuaria fora da transação. |
-| Gravar e compensar após a recusa | As tools confirmariam normalmente; uma reprovação dispararia `DELETE`, outro `UPDATE` ou cancelamento do evento. | Preservaria parte do fluxo antigo, com confirmação imediata das tools. | A primeira gravação já seria visível. A compensação pode falhar, atingir um registro alterado posteriormente ou não desfazer um convite externo. Portanto, não sustenta a garantia de recusa sem efeito. |
-| Guardar intenções em Redis ou Upstash | O turno registraria operações em um serviço externo e as recuperaria após o juiz. | Facilitaria compartilhar estado entre instâncias e sobreviver a alguns reinícios, desde que houvesse controle de expiração e reprocessamento. | Exigiria operação, limpeza e correlação de um novo serviço. Redis não torna atômicos PostgreSQL e Google Calendar. Como o sistema executa o turno no mesmo processo, memória temporária atende à necessidade atual. |
+A arquitetura escolhida foi **adiar as escritas, com execução transacional das operações SQL após aprovação**. A comparação considera o grafo existente, no qual o juiz já avalia a resposta depois do orquestrador e do guardrail de saída. As outras alternativas são viáveis, mas apresentam custos e limitações menos adequados ao problema e ao escopo deste projeto.
 
-Uma mudança apenas nos prompts também foi descartada como mecanismo de segurança: o modelo poderia seguir ou contrariar uma instrução textual, e a tool ainda gravaria antes do juiz. Os prompts foram ajustados para descrever corretamente o estado pendente, enquanto a autorização efetiva ficou no código.
+### 2.1. Interceptar: julgar a ação antes da tool
+
+Avaliar uma ação antes de chamar a ferramenta de escrita poderia impedir operações incompatíveis com o pedido. Para isso, a avaliação precisaria receber os argumentos propostos, a fala do usuário e as evidências necessárias. Receber apenas `amount=10`, sem contexto sobre sua moeda, seria insuficiente. Essa necessidade de evidências também existe no adiamento.
+
+Na alternativa considerada, cada operação de escrita consultaria o JEV antes da execução. Um pedido com três escritas acrescentaria três avaliações, aumentando a latência e as oportunidades de falha de rede. Essas avaliações individuais também não verificariam a resposta produzida posteriormente pelo orquestrador; o juiz final continuaria necessário.
+
+O adiamento permite aproveitar a avaliação já existente para apresentar conjuntamente a resposta candidata e o manifesto das operações propostas. Depois da aprovação, o código executa as ferramentas e produz a confirmação com os resultados reais. Uma aprovação antecipada, sozinha, não comprovaria sucesso da execução nem fidelidade da resposta posterior.
+
+O decorator `@escrita` realiza uma interceptação técnica da execução, mas sua função é guardar a intenção. Ele não consulta o juiz antes de o agente chamar a tool. Por isso, a estratégia principal continua sendo o adiamento.
+
+**Motivo da exclusão:** evitar avaliações adicionais por operação e aproveitar o juiz existente para analisar a resposta e as intenções em conjunto. O risco de erro do modelo permanece nas duas alternativas e exige validações determinísticas complementares.
+
+### 2.2. Adiar: alternativa escolhida
+
+Na implementação adotada, preparar significa guardar temporariamente o nome da operação e seus argumentos na memória do turno, sem alterar as transações ou os eventos efetivos. A ferramenta retorna `status: pendente`, `persistido: false` e um `operacao_id`, que identifica a intenção e não uma linha do banco.
+
+O manifesto encerra a preparação e apresenta as operações ao juiz junto da resposta candidata. Assim, a avaliação pode considerar se as ações propostas correspondem ao pedido, sem confundir preparação com gravação concluída.
+
+Algumas verificações também acontecem no código antes do julgamento. Para valores financeiros, a implementação exige indicação reconhecível de reais na mensagem atual e correspondência com o valor proposto. Não foi implementado um campo estruturado de moeda nem conversão automática. Essa proteção reduz interpretações indevidas, mas o texto livre continua sem substituir uma moeda estruturada, conforme discutido na seção 4.
+
+Sem aprovação explícita, ou com erro de preparação, as intenções não são executadas. Após aprovação, as escritas locais são executadas em um lote SQL curto. A resposta final é construída com os resultados da execução, evitando confirmar um sucesso que não ocorreu.
+
+**Motivo da escolha:** impedir efeitos antes da autorização, reaproveitar o juiz sem acrescentar avaliações individuais e vincular a confirmação ao resultado real. O juiz avalia a proposta e a resposta candidata; o código executa as operações, verifica seus retornos e monta o recibo. Essa divisão de responsabilidades não torna o julgamento infalível.
+
+### 2.3. Transacionar: manter uma unidade de trabalho aberta durante o turno
+
+Outra possibilidade seria executar as alterações dentro de uma transação iniciada antes do especialista e deixar o juiz decidir entre `commit` e `rollback`. A vantagem seria desfazer conjuntamente as alterações SQL ainda não confirmadas após uma recusa.
+
+Entretanto, o fluxo inclui chamadas a modelos e serviços externos. Manter a transação aberta durante essas etapas ocuparia uma conexão por mais tempo e poderia prolongar bloqueios, dependendo das operações realizadas. Timeouts aumentariam esse período de espera e poderiam prejudicar outros pedidos concorrentes.
+
+Uma queda do processo normalmente leva o banco a desfazer a transação não confirmada quando a conexão é encerrada. Portanto, o principal argumento contra essa alternativa é a duração da ocupação dos recursos enquanto se aguarda o processamento externo.
+
+Também seria necessário coordenar as conexões das ferramentas durante todo o fluxo. Além disso, o rollback do PostgreSQL não desfaz automaticamente efeitos no Google Calendar.
+
+A solução adotada também utiliza uma transação compartilhada, por meio de `lote_sql()`, mas somente após a aprovação. Se uma execução SQL falhar, o lote é desfeito. Se o juiz recusar antes, apenas se descartam intenções: não há alteração dessas tabelas para reverter.
+
+**Motivo da exclusão:** evitar uma transação aberta durante o julgamento, preservando a confirmação conjunta das escritas locais em uma transação de menor duração.
+
+### 2.4. Compensar: gravar primeiro e desfazer após a recusa
+
+Na compensação, as ferramentas confirmariam as operações normalmente. Uma reprovação posterior provocaria uma ação inversa, como excluir uma transação, restaurar um valor ou cancelar um evento.
+
+Essa abordagem preservaria parte do fluxo antigo, mas o efeito já estaria visível antes da decisão. Entre a gravação e a compensação, consultas ou outros processos poderiam utilizar o registro. A ação inversa também poderia falhar ou não desfazer consequências anteriores, como uma informação já exibida ou uma comunicação externa enviada.
+
+Em atualizações, seria necessário preservar o estado anterior e controlar alterações concorrentes. Sem esses cuidados, restaurar um valor antigo poderia sobrescrever uma modificação legítima realizada posteriormente. Identificar corretamente o registro e controlar repetições também seriam requisitos da compensação.
+
+**Motivo da exclusão:** o objetivo era impedir efeitos de operações reprovadas. Adiar a execução evita depender de uma ação inversa posterior, que pode falhar ou não reverter todas as consequências.
+
+### 2.5. Outras decisões de implementação
+
+Além das quatro estratégias, foram considerados o armazenamento externo das intenções e a alteração isolada dos prompts.
+
+| Caminho | Vantagem possível | Motivo para não adotá-lo neste projeto |
+|---|---|---|
+| Guardar intenções em Redis ou Upstash | Compartilhar pendências entre instâncias e sobreviver a alguns reinícios, com controles de expiração e reprocessamento. | Exigiria operação, limpeza e correlação de outro serviço. Como o turno é preparado e concluído no mesmo processo, memória temporária atende ao escopo atual. Redis não torna atômicos PostgreSQL e Google Calendar. Essa opção trata do armazenamento das intenções e poderia coexistir com o adiamento. |
+| Alterar somente os prompts | Orientar os agentes a respeitar moeda, evidências e resultados das ferramentas. | Uma instrução textual não impede tecnicamente a gravação antes do juiz. Os prompts foram alinhados ao estado pendente, enquanto a autorização efetiva ficou no código. |
+
+A escolha atende ao fluxo atual, mas não garante atomicidade entre todos os serviços. Os efeitos esperados sobre latência, erros e custo são discutidos na seção 3. As falhas parciais, a perda de intenções em memória, os limites de idempotência e o tratamento de moeda estão detalhados na seção 4.
 
 ## 3. Efeito esperado nas métricas de SRE
 
