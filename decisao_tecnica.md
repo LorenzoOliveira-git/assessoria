@@ -1,6 +1,6 @@
 # Decisão técnica: autorização das escritas pelo juiz
 
-**Relação com as evidências.** O arquivo [evidencias.md](evidencias.md) registra os casos observados **antes** da correção, nos quais houve gravação apesar da reprovação da resposta. A verificação **depois** da correção é apresentada na seção 4 deste documento e em [tests/test_escritas.py](tests/test_escritas.py). Essa distinção permite comparar a falha inicial com os efeitos observados após a implementação, sem confundir testes isolados com uma execução em serviços reais.
+**Relação com as evidências.** O arquivo [evidencias.md](evidencias.md) registra os casos observados **antes** da correção, nos quais houve gravação apesar da reprovação da resposta. Além disso, a verificação **depois** é feita também nesse arquivo a fim de mostrar o aumento em latência com a solução.
 
 ## Glossário
 
