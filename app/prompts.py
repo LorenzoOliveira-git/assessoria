@@ -235,7 +235,7 @@ Financeiro: {"dominio":"financeiro","intencao":"consultar","resposta":"Você gas
 FINANCEIRO_SHOT_2 = """
 Roteador: ROUTE=financeiro
 PERGUNTA_ORIGINAL=[pedido para registrar gasto com valor e forma de pagamento]
-Financeiro: {"dominio":"financeiro","intencao":"inserir","resposta":"Lancei R$ [valor] em '[categoria]' [data] ([pagamento]).","recomendacao":"[pergunta ou observação opcional]","escrita":{"operacao":"adicionar","id":[id gerado]}}"""
+Financeiro: {"dominio":"financeiro","intencao":"inserir","resposta":"Preparei o lançamento de R$ [valor]; aguarda a decisão do juiz.","recomendacao":"[pergunta ou observação opcional]"}"""
 #Exemplo 3 — Dado ausente → esclarecer:
 FINANCEIRO_SHOT_3 = """
 Roteador: ROUTE=financeiro
@@ -294,20 +294,19 @@ Compromissos, eventos, lembretes, tarefas, disponibilidade e conflitos de agenda
 - Se faltarem dados para registrar um evento, use o campo "esclarecer".
 - Responda APENAS com o JSON abaixo, sem markdown, sem texto extra.
 
-### GRAVAÇÃO — LEIA ANTES DE RESPONDER "criar"
+  ### GRAVAÇÃO — LEIA ANTES DE RESPONDER "criar"
 Se o usuário informar um compromisso ("tenho reunião quinta às 15h", "marca X
 amanhã"), isso JÁ É a ordem de registrar. NÃO pergunte "confirmo o registro?":
 chame `add_event` na mesma resposta.
 
-Você só pode escrever no campo "resposta" que o evento foi registrado se
-`add_event` tiver devolvido `status: "ok"` com um `id`. Sem esse retorno, o
-evento NÃO existe no banco — dizer que existe é mentir para o usuário.
+Se `add_event` devolver `status: "pendente"`, diga apenas que preparou o evento.
+O registro e seu ID só serão confirmados depois da decisão do juiz.
 
 Fluxo obrigatório ao criar:
   1. `query_events` no dia pedido (checar conflito).
   2. `add_event` com o `start_time` em ISO 8601 COM fuso (ex.: 2026-09-24T15:00:00-03:00).
   3. `add_google_event` com os mesmos dados.
-  4. JSON final com "escrita":{{"operacao":"adicionar","id":<id devolvido>}}.
+  4. JSON final informando que a criação está pendente, sem inventar ID.
 
 Só pule o passo 2 quando faltar data ou hora — aí use "esclarecer" e
 intenção "criar", sem afirmar nenhum registro.
@@ -318,9 +317,7 @@ Campos mínimos obrigatórios:
   - intencao     : "consultar" | "criar" | "atualizar" | "cancelar" | "listar" | "disponibilidade" | "conflitos"
   - resposta     : uma frase objetiva com o resultado ou diagnóstico
   - recomendacao : ação prática (string vazia se não houver)
-  - escrita        : {{"operacao":"adicionar|atualizar|cancelar","id":123,"google":"ok|falhou"}}
-                    OBRIGATÓRIO sempre que você gravou algo — o "id" é o que
-                    `add_event` devolveu, nunca um número inventado.
+  - escrita        : inclua somente quando uma tool devolver um ID real.
 
 Campos opcionais (incluir SOMENTE se necessário):
   - acompanhamento : texto curto de follow-up / próximo passo
@@ -347,10 +344,10 @@ PERGUNTA_ORIGINAL=[pedido para marcar evento com participante, data e duração]
 Agenda: query_events(date_local="[YYYY-MM-DD]")
 Tool: {"status":"ok","count":0,"results":[]}
 Agenda: add_event(title="[título]", source_text="[pergunta original]", start_time="[YYYY-MM-DDTHH:MM:00-03:00]", end_time="[YYYY-MM-DDTHH:MM:00-03:00]")
-Tool: {"status":"ok","id":[id gerado],"title":"[título]","start_time":"[datetime início]"}
+Tool: {"status":"pendente","persistido":false,"operacao_id":"[operação]"}
 Agenda: add_google_event(title="[título]", start_time="[YYYY-MM-DDTHH:MM:00-03:00]", end_time="[YYYY-MM-DDTHH:MM:00-03:00]")
-Tool: {"status":"ok"}
-Agenda: {"dominio":"agenda","intencao":"criar","resposta":"Registrei '[título]' em [data] [hora início]–[hora fim].","recomendacao":"[observação opcional]","escrita":{"operacao":"adicionar","id":[id gerado],"google":"ok"}}"""
+Tool: {"status":"pendente","persistido":false,"operacao_id":"[operação]"}
+Agenda: {"dominio":"agenda","intencao":"criar","resposta":"Preparei '[título]' para [data] [hora início]–[hora fim]; ainda aguarda a decisão do juiz.","recomendacao":"[observação opcional]"}"""
 #Exemplo 3 — Conflito de horário:
 AGENDA_SHOT_3 = """
 Roteador: ROUTE=agenda
@@ -500,3 +497,16 @@ JUIZ_PROMPT_COMPLETO = f"""
     opinião dita como fato do sistema, número, data, telefone ou regra 
     que não saiam da evidência contam como sem_apoio.
 """
+
+# O código, não este texto, controla o commit após o juiz.
+_ESCRITA_PENDENTE = """
+As tools de escrita retornam status pendente: isso ainda não é gravação.
+Não invente ID nem confirme uma escrita antes do resultado real.
+Se uma tool recusar a operação, explique o motivo. Valores financeiros só
+podem ser gravados quando o usuário informou claramente reais (R$).
+Não afirme que convites foram enviados ou aceitos sem prova da ferramenta.
+"""
+FINANCEIRO_PROMPT_COMPLETO += _ESCRITA_PENDENTE
+AGENDA_PROMPT_COMPLETO += _ESCRITA_PENDENTE
+ORQUESTRADOR_PROMPT_COMPLETO += _ESCRITA_PENDENTE
+JUIZ_PROMPT_COMPLETO += "Intenção pendente não comprova gravação. Avalie se as operações propostas correspondem ao pedido."

@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 # A conexão com o Postgres agora vem de um lugar só (antes era uma get_conn()
 # local, idêntica à de financeiro.py).
 from app.tools.db import get_conn
+from app.escritas import escrita
 
 
 class AddEventArgs(BaseModel):
@@ -20,6 +21,7 @@ class AddEventArgs(BaseModel):
 
 
 @tool("add_event", args_schema=AddEventArgs)
+@escrita
 def add_event(
     title: str,
     source_text: str,

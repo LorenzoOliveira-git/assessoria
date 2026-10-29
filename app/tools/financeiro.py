@@ -7,6 +7,7 @@ import unicodedata
 from datetime import date as date_type, datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 from app.tools.db import get_conn
+from app.escritas import escrita, moeda_brl
 
 # ==================================================================
 #                        BASEMODELS
@@ -373,9 +374,10 @@ def _intervalo_relativo(periodo: Optional[str]) -> tuple[Optional[str], Optional
     proximo_dia = inicio + timedelta(days=1)
     return inicio.isoformat(), proximo_dia.isoformat()
 
-def _sum_by_type(cur, type_id: int, start_date: Optional[str], end_date: Optional[str]) -> float:
-    query = "SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE type = %s"
-    params = [type_id]
+def _totais(cur, start_date: Optional[str], end_date: Optional[str]) -> tuple[float, float]:
+    """Não somar valores antigos cuja moeda não pode ser identificada."""
+    query = "SELECT amount, type, source_text FROM transactions WHERE 1=1"
+    params = []
 
     if start_date:
         query += " AND occurred_at >= %s"
@@ -385,7 +387,13 @@ def _sum_by_type(cur, type_id: int, start_date: Optional[str], end_date: Optiona
         params.append(end_date)
 
     cur.execute(query, params)
-    return float(cur.fetchone()[0])
+    totais = {1: 0.0, 2: 0.0}
+    for amount, tipo, origem in cur.fetchall():
+        if not moeda_brl(origem):
+            raise ValueError("Há transações com moeda não identificada neste período; não posso calcular um saldo em reais.")
+        if tipo in totais:
+            totais[tipo] += float(amount)
+    return totais[1], totais[2]
 
 def _resolve_type_id(cur, type_id: Optional[int], type_name: Optional[str]) -> Optional[int]:
     if type_name:
@@ -420,6 +428,7 @@ def _resolve_category_id(cur, category_id: Optional[int], category_name: Optiona
 
 # Tool: add_transaction
 @tool("add_transaction", args_schema=AddTransactionArgs)
+@escrita
 def add_transaction(
     amount: float,
     source_text: str,
@@ -505,6 +514,7 @@ def search_transactions(
         query = """
             SELECT 
                 t.amount AS "Valor da transação"
+                ,t.source_text AS "Texto de origem"
                 ,tt.type AS "Tipo da transação"
                 ,c.name AS "Categoria"
                 ,t.description AS "descrição"
@@ -543,6 +553,8 @@ def search_transactions(
         rows = cur.fetchall()
         cols = [desc[0] for desc in cur.description]
         table = [dict(zip(cols, row)) for row in rows]
+        for item in table:
+            item["Moeda"] = "BRL" if moeda_brl(item.pop("Texto de origem")) else "desconhecida"
         return {
             "status": "ok",
             "table":table,
@@ -571,8 +583,7 @@ def saldo_total(
     cur = conn.cursor()
     try:
         
-        total_income = _sum_by_type(cur,1,start_date,end_date)
-        total_expense = _sum_by_type(cur,2,start_date,end_date)
+        total_income, total_expense = _totais(cur, start_date, end_date)
 
         balance = total_income - total_expense
 
@@ -608,8 +619,7 @@ def saldo_diario(
         start = f"{target_date} 00:00:00"
         end   = f"{target_date} 23:59:59"
 
-        total_income  = _sum_by_type(cur, 1, start, end)
-        total_expense = _sum_by_type(cur, 2, start, end)
+        total_income, total_expense = _totais(cur, start, end)
         balance = total_income - total_expense
 
         return {
@@ -630,6 +640,7 @@ def saldo_diario(
             pass
 
 @tool("update_transaction", args_schema=UpdateTransactionArgs)
+@escrita
 def update_transaction(
     id: Optional[int] = None,
     match_text: Optional[str] = None,

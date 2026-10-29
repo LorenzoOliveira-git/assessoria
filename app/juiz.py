@@ -4,6 +4,7 @@ Quem decide é o JEV: choice e noul, sem redação.
 A frase fixa, quando entra, é deste arquivo.
 """
 import json
+import math
 import urllib.error
 import urllib.request
 
@@ -37,6 +38,7 @@ def coleta(estado):
         texto = _texto(mensagem).strip()
         if tipo == "human" and texto:
             pergunta = texto
+            resposta = ""
             evidencias = []
         elif tipo == "tool" and texto:
             nome = getattr(mensagem, "name", "") or "tool"
@@ -53,13 +55,14 @@ def coleta(estado):
     return pergunta, resposta, evidencia[-6000:]
 
 
-def _publicar(texto, rotulo, resposta_original):
+def _publicar(texto, rotulo, resposta_original, aprovado=False):
     print(f"[juiz] {rotulo}")
     if texto.strip() == (resposta_original or "").strip():
-        return {"agentes_chamados": [f"juiz:{rotulo}"]}
+        return {"agentes_chamados": [f"juiz:{rotulo}"], "juiz_aprovado": aprovado}
     return {
         "messages": [{"role": "assistant", "content": texto.strip()}],
         "agentes_chamados": [f"juiz:{rotulo}"],
+        "juiz_aprovado": aprovado,
     }
 
 
@@ -110,7 +113,7 @@ def julgar_jev(pergunta, resposta, evidencia):
     respostas = dados["answers"]
     choice = respostas["veredito"]["choice"]
     noul = float(respostas["apoiada"]["noul"])
-    if choice == "apoiada" and noul >= LIMIAR:
-        return _publicar(resposta, f"apoiada noul={noul:.2f}", resposta)
+    if choice == "apoiada" and math.isfinite(noul) and LIMIAR <= noul <= 1:
+        return _publicar(resposta, f"apoiada noul={noul:.2f}", resposta, aprovado=True)
     rotulo = "apoiada:abaixo_do_limiar" if choice == "apoiada" else choice
     return _publicar(FRASE_SEGURA, f"{rotulo} noul={noul:.2f}", resposta)

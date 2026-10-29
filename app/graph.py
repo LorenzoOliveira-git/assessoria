@@ -1,3 +1,4 @@
+import json
 import operator
 from typing import Annotated
 from langgraph.graph import StateGraph, MessagesState, END
@@ -8,6 +9,7 @@ from langgraph.checkpoint.memory import MemorySaver
 from app.memory import salvar_mensagem
 from app.observabilidade import abrir_turno, fechar_turno, status_do_estado
 from app.juiz import coleta, julgar_jev, _publicar, FRASE_SEGURA
+from app.escritas import atual, contexto, serializar
 
 from app.guardrail import guardrail_entrada,guardrail_saida,anonimizar_entrada
 
@@ -31,6 +33,36 @@ class Estado(MessagesState):
     agentes_chamados: Annotated[list[str], operator.add]
     rota:             str   # decisão do roteador — não polui o histórico
     mapa_pii: dict
+    status_escrita: str
+
+
+_TOOLS_ESCRITA_EVIDENCIA = {"add_transaction", "update_transaction", "add_event", "add_google_event"}
+
+
+def _log_evidencia(etapa: str, dados: dict) -> None:
+    """Mostra um recorte legível do turno sem alterar o estado do grafo."""
+    try:
+        print(f"\n{'=' * 72}\n{etapa}\n{json.dumps(dados, ensure_ascii=False, indent=2, default=str)}\n{'=' * 72}", flush=True)
+    except (OSError, UnicodeError):
+        pass  # Uma falha no terminal não deve interromper o atendimento.
+
+
+def _escritas_do_turno(mensagens: list) -> list[dict]:
+    """Reúne chamadas e retornos das quatro tools após a última fala do usuário."""
+    inicio = max((i for i, msg in enumerate(mensagens) if getattr(msg, "type", "") == "human"), default=-1)
+    escritas = []
+    nomes_por_id = {}
+    for msg in mensagens[inicio + 1:]:
+        if getattr(msg, "type", "") == "ai":
+            for chamada in getattr(msg, "tool_calls", None) or []:
+                if chamada.get("name") in _TOOLS_ESCRITA_EVIDENCIA:
+                    nomes_por_id[chamada.get("id")] = chamada["name"]
+                    escritas.append({"tool": chamada["name"], "chamada": chamada.get("args", {})})
+        elif getattr(msg, "type", "") == "tool":
+            nome = getattr(msg, "name", "") or nomes_por_id.get(getattr(msg, "tool_call_id", None))
+            if nome in _TOOLS_ESCRITA_EVIDENCIA:
+                escritas.append({"tool": nome, "retorno": msg.content, "erro": getattr(msg, "status", "") == "error"})
+    return escritas
 
 
 # ==============================================================================
@@ -61,13 +93,41 @@ def no_roteador(estado: Estado, config: RunnableConfig) -> dict:
 
 def no_juiz(estado: dict) -> dict:
     pergunta, resposta, evidencia = coleta(estado)
+    turno = atual()
+    tentativas = _escritas_do_turno(estado["messages"])
+    if turno and (any(t.get("erro") for t in tentativas) or (tentativas and not turno.tem_escritas)):
+        turno.erros.append("Não foi possível preparar a escrita solicitada.")
+    if turno and turno.tem_escritas:
+        evidencia += "\n\nINTENÇÕES PENDENTES (nenhum efeito executado):\n" + turno.manifesto()
     if not resposta:
+        _log_evidencia("[juiz]", {"veredito": "sem_resposta", "resposta_recebida": resposta})
+        if turno and turno.tem_escritas:
+            texto = turno.concluir(False)
+            turno.status = "erro"
+            return {"messages": [{"role": "assistant", "content": texto}], "agentes_chamados": ["juiz:sem_resposta"], "status_escrita": turno.status}
         return {"agentes_chamados": ["juiz:sem_resposta"]}
     try:
-        return julgar_jev(pergunta, resposta, evidencia)
+        resultado = julgar_jev(pergunta, resposta, evidencia)
+        if not isinstance(resultado, dict) or not isinstance(resultado.get("agentes_chamados"), list) or not resultado["agentes_chamados"]:
+            raise ValueError("Veredito inválido")
     except Exception as exc:
         print(f"[juiz] erro {exc}")
-        return _publicar(FRASE_SEGURA, "erro", resposta)
+        resultado = _publicar(FRASE_SEGURA, "erro", resposta)
+    if turno and turno.tem_escritas:
+        rotulo = resultado["agentes_chamados"][0]
+        texto = turno.concluir(resultado.get("juiz_aprovado") is True)
+        if rotulo.startswith(("juiz:erro", "juiz:sem_chave")):
+            turno.status = "erro"
+        resultado["messages"] = [{"role": "assistant", "content": texto}]
+        resultado["status_escrita"] = turno.status
+    _log_evidencia("[juiz]", {
+        "veredito": resultado["agentes_chamados"][0],
+        "pergunta_avaliada": pergunta,
+        "evidencia_recebida": evidencia,
+        "resposta_recebida": resposta,
+        "resposta_publicada": resultado.get("messages", [{}])[-1].get("content", resposta),
+    })
+    return resultado
 
 # ==============================================================================
 # NÓ ORQUESTRADOR — wrapper para capturar agentes_chamados via rota
@@ -186,6 +246,7 @@ fluxo_agentes = grafo.compile(checkpointer=memory)
 # ==============================================================================
 # FLUXO PRINCIPAL
 # ==============================================================================
+@serializar
 def executar_fluxo_assessor(
     pergunta_usuario: str, session_id: str, user_id: str = "usuario_teste"
 ) -> str:
@@ -196,8 +257,17 @@ def executar_fluxo_assessor(
         "rota":             "",
         "mapa_pii":         {},
         "session_id":       session_id,
+        "status_escrita":   "",
 
     }
+
+    _log_evidencia("[estado inicial]", {
+        "session_id": session_id,
+        "user_id": user_id,
+        "estado_do_grafo": estado_inicial,
+    })
+
+
 
     # O registro abre antes do invoke e fecha no finally, inclusive quando
     # o grafo levanta. A rota /monitor só lê o que ficou anotado.
@@ -205,18 +275,34 @@ def executar_fluxo_assessor(
     status = "erro"
     rota = ""
     try:
-        estado_final = fluxo_agentes.invoke(
-            estado_inicial,
-            config={"configurable": {"thread_id": session_id, "user_id": user_id}},
-        )
+        with contexto(turno_id, pergunta_usuario_anonimizado) as turno:
+            try:
+                estado_final = fluxo_agentes.invoke(
+                    estado_inicial,
+                    config={"configurable": {"thread_id": session_id, "user_id": user_id}},
+                )
+            except Exception:
+                if not turno.tem_escritas:
+                    raise
+                turno.status = "erro"
+                # Se já houve commit, concluir devolve o recibo cacheado.
+                return turno.concluir(False)
 
         resposta = estado_final["messages"][-1].text
+
+        _log_evidencia("[estado final]", {
+            "session_id": session_id,
+            "rota": estado_final.get("rota"),
+            "agentes_chamados": estado_final.get("agentes_chamados"),
+            "escritas_do_turno": _escritas_do_turno(estado_final["messages"]),
+            "resposta_final_do_grafo": resposta,
+        })
 
         # Salva no MongoDB após cada interação
         salvar_mensagem(session_id, "human",     pergunta_usuario_anonimizado, user_id=user_id)
         salvar_mensagem(session_id, "assistant", resposta, user_id=user_id)
 
-        status = status_do_estado(estado_final)
+        status = estado_final.get("status_escrita") or status_do_estado(estado_final)
         rota = estado_final.get("rota") or ""
         return resposta
     finally:

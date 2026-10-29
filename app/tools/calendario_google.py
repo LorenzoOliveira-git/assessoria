@@ -21,6 +21,7 @@ from typing import Any, Optional
 
 from langchain.tools import tool
 from pydantic import BaseModel, Field
+from app.escritas import escrita
 
 from app.config import (
     BASE_DIR,
@@ -274,6 +275,7 @@ class AddGoogleEventArgs(BaseModel):
 
 
 @tool("add_google_event", args_schema=AddGoogleEventArgs)
+@escrita
 def add_google_event(
     title: str,
     start_time: str,

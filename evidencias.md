@@ -1,0 +1,312 @@
+# Evidências
+
+## Sessão: Entendendo o erro
+
+**Falha a documentar:** uma tool confirma a gravação, mas o juiz substitui a confirmação pela frase “Não tenho evidência para afirmar isso.” Os três textos abaixo são testes para comprovar esse erro.
+
+Os blocos de log mostram o estado enviado ao grafo, as chamadas e os retornos das três tools de escrita encontrados nas mensagens, o veredito do juiz e a resposta final do grafo. Além disso, precisamos identificar se realmente foi feito um registro no banco. E por fim, medimos a latência de cada pergunta para comparar após a solução do juiz.
+
+
+### 1. `add_transaction`
+
+**Pergunta de teste:**
+![Imagem de teste para adicionar transação](assets\img\antes\teste_add_transaction.png)
+
+Pergunta: Comprei um lanche por 17 dólares hoje, pago por PIX.
+
+Resposta: Não tenho evidência para afirmar isso.
+
+**Estado inicial — grafo e banco**
+
+```
+========================================================================
+[estado inicial]
+{
+  "session_id": "542829e4-61f4-4fa0-bf62-b5cbd39bca67",
+  "user_id": "usuario_teste",
+  "estado_do_grafo": {
+    "messages": [
+      {
+        "role": "human",
+        "content": "Comprei um lanche por 17 dólares hoje, pago por PIX."
+      }
+    ],
+    "agentes_chamados": [],
+    "rota": "",
+    "mapa_pii": {},
+    "session_id": "542829e4-61f4-4fa0-bf62-b5cbd39bca67"
+  }
+}
+========================================================================
+```
+
+**Estado Final e `[juiz]`**
+
+```
+[juiz] sem_apoio noul=0.32
+
+========================================================================
+[juiz]
+{
+  "veredito": "juiz:sem_apoio noul=0.32",
+  "pergunta_avaliada": "Comprei um lanche por 17 dólares hoje, pago por PIX.",
+  "evidencia_recebida": "[chamada add_transaction]\n{\"payment_method\": \"PIX\", \"source_text\": \"Comprei um lanche por 17 dólares hoje, pago por PIX.\", \"type_name\": \"EXPENSES\", \"type_id\": 2, \"amount\": 17, \"category_id\": 1, \"category_name\": \"COMIDA\", \"description\": \"Lanche\"}\n\n[add_transaction]\n{\"status\": \"ok\", \"id\": 3, \"occurred_at\": \"2026-10-27 15:42:39.069491+00:00\"}",
+  "resposta_recebida": "- Lancei R$ 17,00 em 'COMIDA' hoje (PIX).  \n- *Recomendação*: Gostaria de ver o resumo dos seus gastos de hoje?",
+  "resposta_publicada": "Não tenho evidência para afirmar isso."
+}
+========================================================================
+
+========================================================================
+[estado final]
+{
+  "session_id": "542829e4-61f4-4fa0-bf62-b5cbd39bca67",
+  "rota": "financeiro",
+  "agentes_chamados": [
+    "guardrail_entrada:aprovado",
+    "roteador",
+    "financeiro",
+    "orquestrador",
+    "guardrail_saida",
+    "juiz:sem_apoio noul=0.32"
+  ],
+  "escritas_do_turno": [
+    {
+      "tool": "add_transaction",
+      "chamada": {
+        "payment_method": "PIX",
+        "source_text": "Comprei um lanche por 17 dólares hoje, pago por PIX.",
+        "type_name": "EXPENSES",
+        "type_id": 2,
+        "amount": 17,
+        "category_id": 1,
+        "category_name": "COMIDA",
+        "description": "Lanche"
+      }
+    },
+    {
+      "tool": "add_transaction",
+      "retorno": "{\"status\": \"ok\", \"id\": 3, \"occurred_at\": \"2026-10-27 15:42:39.069491+00:00\"}"
+    }
+  ],
+  "resposta_final_do_grafo": "Não tenho evidência para afirmar isso."
+}
+```
+
+**Banco de dados**:
+![Imagem do registro no banco de dados](assets\img\antes\banco_add_transaction.png)
+
+**Latência total e percurso no LangSmith**:
+
+![Imagem do trace e latência total para adicionar uma transação](assets\img\antes\trace_add_transaction.png)
+
+**Resultado observado:** Após o teste para adicionar uma transação em dólar, o valor foi adicionado ao banco, porém foi bloqueado pelo juiz. Essa inconsistência é grave, pois o registro no banco de dados foi feito, sem a indicação ao usuário, além do que, o valor em dólar foi interpretado como reais dentro do banco de dados.
+
+### 2. `update_transaction`
+
+**Pergunta de teste:**
+![Imagem da pergunta e resposta da IA para testar o fluxo de bloqueio da tool update_transaction](assets\img\antes\teste_update_transaction.png)
+
+**Pergunta:**Altere a transação de ID 3 para 23 dólares e confirme o novo valor em reais.
+
+**Resposta:**Não tenho evidência para afirmar isso.
+
+
+**Estado inicial — grafo e banco**
+
+```
+========================================================================
+[estado inicial]
+{
+  "session_id": "542829e4-61f4-4fa0-bf62-b5cbd39bca67",
+  "user_id": "usuario_teste",
+  "estado_do_grafo": {
+    "messages": [
+      {
+        "role": "human",
+        "content": "Altere a transação de ID 3 para 23 dólares e confirme o novo valor em reais."
+      }
+    ],
+    "agentes_chamados": [],
+    "rota": "",
+    "mapa_pii": {},
+    "session_id": "542829e4-61f4-4fa0-bf62-b5cbd39bca67"
+  }
+}
+========================================================================
+```
+
+
+**Estado final, Tool e `[juiz]`**
+```
+========================================================================
+[juiz] sem_apoio noul=0.21
+
+========================================================================
+[juiz]
+{
+  "veredito": "juiz:sem_apoio noul=0.21",
+  "pergunta_avaliada": "Altere a transação de ID 3 para 23 dólares e confirme o novo valor em reais.",
+  "evidencia_recebida": "[chamada update_transaction]\n{\"amount\": 23, \"id\": 3}\n\n[update_transaction]\n{\"status\": \"ok\", \"rows_affected\": 1, \"id\": 3, \"updated\": {\"id\": 3, \"occurred_at\": \"2026-10-27 15:42:39.069491+00:00\", \"amount\": 23.0, \"type\": \"EXPENSES\", \"category\": \"COMIDA\", \"description\": \"Lanche\", \"payment_method\": \"PIX\", \"source_text\": \"Comprei um lanche por 17 dólares hoje, pago por PIX.\"}}",
+  "resposta_recebida": "- Atualizei a transação de ID 3 para o valor de R$ 23,00.  \n- *Recomendação*: Verifique se deseja ajustar mais alguma informação desta transação.",
+  "resposta_publicada": "Não tenho evidência para afirmar isso."
+}
+========================================================================
+
+========================================================================
+[estado final]
+{
+  "session_id": "542829e4-61f4-4fa0-bf62-b5cbd39bca67",
+  "rota": "financeiro",
+  "agentes_chamados": [
+    "guardrail_entrada:aprovado",
+    "roteador",
+    "financeiro",
+    "orquestrador",
+    "guardrail_saida",
+    "juiz:sem_apoio noul=0.21"
+  ],
+  "escritas_do_turno": [
+    {
+      "tool": "update_transaction",
+      "chamada": {
+        "amount": 23,
+        "id": 3
+      }
+    },
+    {
+      "tool": "update_transaction",
+      "retorno": "{\"status\": \"ok\", \"rows_affected\": 1, \"id\": 3, \"updated\": {\"id\": 3, \"occurred_at\": \"2026-10-27 15:42:39.069491+00:00\", \"amount\": 23.0, \"type\": \"EXPENSES\", \"category\": \"COMIDA\", \"description\": \"Lanche\", \"payment_method\": \"PIX\", \"source_text\": \"Comprei um lanche por 17 dólares hoje, pago por PIX.\"}}"
+    }
+  ],
+  "resposta_final_do_grafo": "Não tenho evidência para afirmar isso."
+}
+========================================================================
+```
+
+**Banco de dados:**
+![Imagem da comprovação de alteração no banco de dados](assets\img\antes\banco_update_transaction.png)
+
+**Latência total e percurso no LangSmith**
+
+![Imagem do trace do fluxo de update_transaction do langsmith](assets\img\antes\trace_update_transaction.png)
+
+**Resultado observado:** Após o teste, é possível perceber que o agente juiz bloqueou novamente a reposta, isso porque, existe uma inconsistência entre o input do usuário e a resposta da tool, pois ela vem em reais, e o inputo veio em dólares. Isso tem dois problemas centrais: o registro foi cadastrado no banco, mesmo dando erro e não avisando o usuário, além disso, o valor de conversão está errado, pois o valor `amount` recebe o valor em reais.
+
+### 3. `add_event`
+
+**Pergunta de teste:** 
+![Imagem da pergunta e resposta ao chatbot para testar bloqueio no add_event](assets\img\antes\teste_add_events.png)
+
+**Pergunta:** Agende ‘Revisão do orçamento’ em 31/10/2026, das 15h às 16h, com Ana e Bruno. Depois confirme que ambos receberam e aceitaram o convite.
+
+**Resposta:** Não tenho evidência para afirmar isso.
+
+**Estado inicial — grafo e banco**
+
+```
+========================================================================
+[estado inicial]
+{
+  "session_id": "10a1a72b-e197-4e65-b11c-4aa0996b3ab0",
+  "user_id": "usuario_teste",
+  "estado_do_grafo": {
+    "messages": [
+      {
+        "role": "human",
+        "content": "Agende ‘Revisão do orçamento’ em 31/10/2026, das 15h às 16h, com Ana e Bruno. Depois confirme que ambos receberam e aceitaram o convite."
+      }
+    ],
+    "agentes_chamados": [],
+    "rota": "",
+    "mapa_pii": {},
+    "session_id": "10a1a72b-e197-4e65-b11c-4aa0996b3ab0"
+  }
+}
+========================================================================
+```
+
+**Estado final, Tool e `[juiz]`**
+
+```
+========================================================================
+[juiz] apoiada:abaixo_do_limiar noul=0.69
+
+========================================================================
+[juiz]
+{
+  "veredito": "juiz:apoiada:abaixo_do_limiar noul=0.69",
+  "pergunta_avaliada": "Agende ‘Revisão do orçamento’ em 31/10/2026, das 15h às 16h, com Ana e Bruno. Depois confirme que ambos receberam e aceitaram o convite.",
+  "evidencia_recebida": "[chamada query_events]\n{\"date_local\": \"2026-10-31\"}\n\n[query_events]\n{\"status\": \"ok\", \"count\": 0, \"results\": []}\n\n[chamada add_event]\n{\"start_time\": \"2026-10-31T15:00:00-03:00\", \"title\": \"Revisão do orçamento\", \"source_text\": \"Agende ‘Revisão do orçamento’ em 31/10/2026, das 15h às 16h, com Ana e Bruno. Depois confirme que ambos receberam e aceitaram o convite.\", \"notes\": \"Participantes: Ana e Bruno\", \"end_time\": \"2026-10-31T16:00:00-03:00\"}\n\n[add_event]\n{\"status\": \"ok\", \"id\": 2, \"title\": \"Revisão do orçamento\", \"start_time\": \"2026-10-31 18:00:00+00:00\", \"end_time\": \"2026-10-31 19:00:00+00:00\"}\n\n[chamada add_google_event]\n{\"end_time\": \"2026-10-31T16:00:00-03:00\", \"start_time\": \"2026-10-31T15:00:00-03:00\", \"description\": \"Participantes: Ana e Bruno\", \"title\": \"Revisão do orçamento\"}\n\n[add_google_event]\n{\"status\": \"error\", \"message\": \"Sem token do Google Calendar. Rode no terminal: python -c \\\"from app.tools.calendario_google import autenticar; print(autenticar())\\\"\"}",
+  "resposta_recebida": "- Registrei 'Revisão do orçamento' em 31/10/2026, das 15:00 às 16:00, com Ana e Bruno.  \n- *Recomendação*: Não tenho acesso automático para confirmar o aceite de convites externos por e-mail, por isso não posso verificar se eles aceitaram.  \n- *Acompanhamento*: Deseja que eu envie um lembrete para os participantes?",
+  "resposta_publicada": "Não tenho evidência para afirmar isso."
+}
+========================================================================
+
+========================================================================
+[estado final]
+{
+  "session_id": "10a1a72b-e197-4e65-b11c-4aa0996b3ab0",
+  "rota": "agenda",
+  "agentes_chamados": [
+    "guardrail_entrada:aprovado",
+    "roteador",
+    "agenda",
+    "orquestrador",
+    "guardrail_saida",
+    "juiz:apoiada:abaixo_do_limiar noul=0.69"
+  ],
+  "escritas_do_turno": [
+    {
+      "tool": "add_event",
+      "chamada": {
+        "start_time": "2026-10-31T15:00:00-03:00",
+        "title": "Revisão do orçamento",
+        "source_text": "Agende ‘Revisão do orçamento’ em 31/10/2026, das 15h às 16h, com Ana e Bruno. Depois confirme que ambos receberam e aceitaram o convite.",
+        "notes": "Participantes: Ana e Bruno",
+        "end_time": "2026-10-31T16:00:00-03:00"
+      }
+    },
+    {
+      "tool": "add_event",
+      "retorno": "{\"status\": \"ok\", \"id\": 2, \"title\": \"Revisão do orçamento\", \"start_time\": \"2026-10-31 18:00:00+00:00\", \"end_time\": \"2026-10-31 19:00:00+00:00\"}"
+    }
+  ],
+  "resposta_final_do_grafo": "Não tenho evidência para afirmar isso."
+}
+========================================================================
+```
+
+**Banco de dados:**
+![Imagem do banco de dados que comprova a inserção do registro](assets\img\antes\banco_add_event.png)
+
+**Latência total e percurso no LangSmith:**
+![Imagem do langsmith que mostra o trace do grafo](assets\img\antes\trace_add_event.png)
+
+**Resultado observado:** Após o teste, é possível perceber novamente uma divergência entre o que foi dito pelo agente e o que foi registrado no banco de dados. Após dizer que o agente não tem evidências para a mensagem do usuário e resposta do agente, mesmo assim ele marcou o evento no banco de dados. Além disso, esse bloqueio aconteceu pois o agente não tem uma tool que faz esse processo de enviar convite para outras pessoas.
+
+---
+
+## Correção simplificada em 28/10/2026
+
+As evidências históricas e imagens acima foram mantidas. Elas mostram que as três tools SQL gravavam antes do veredito; no caso da agenda, o juiz reprovou depois da criação do evento.
+
+### Arquivos desta correção
+
+| Arquivo | Por quê |
+|---|---|
+| `app/escritas.py` | Guarda as intenções só durante o pedido e as executa após a aprovação. Não é cache. |
+| `app/graph.py` | Entrega as intenções ao juiz e substitui a resposta candidata pelo resultado real da gravação. A instrumentação local anterior foi preservada. |
+| `app/juiz.py` | Devolve uma aprovação explícita e avalia a resposta do turno atual. |
+| `app/prompts.py` | Explica ao agente que uma tool pendente não significa gravação confirmada. A alteração local anterior foi preservada. |
+| `app/tools/db.py` | Faz as escritas SQL aprovadas em uma só transação. |
+| `app/tools/financeiro.py` | Adia inserção/edição e evita tratar valores de moeda desconhecida como reais. |
+| `app/tools/agenda.py` | Adia a criação na agenda local. |
+| `app/tools/calendario_google.py` | Adia a criação no Google. O fallback original foi preservado. |
+| `tests/test_escritas.py` | Verifica os efeitos com SQLite descartável e Google simulado. |
+| `decisao_tecnica.md` | Compara opções e registra a decisão e seus limites. |
+| `evidencias.md` | Mantém as evidências anteriores e registra a validação final. |
+| `explicacao_alteracoes.md` | Explica ao professor o papel de cada arquivo e, em detalhe, o fluxo de `escritas.py`; revisão textual contra o código atual. |
+
+`app/observabilidade.py` foi restaurado. `tests/test_fluxo.py` e `dados/relacional/03_moeda.sql`, criados na versão anterior da correção, foram removidos. Nenhuma tabela, coluna ou migração de moeda ficou no projeto.
+
+
