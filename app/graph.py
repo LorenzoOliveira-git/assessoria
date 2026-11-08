@@ -35,7 +35,7 @@ class Estado(MessagesState):
     mapa_pii: dict
     status_escrita: str
 
-
+# Agora estou implementando CI e CD!
 _TOOLS_ESCRITA_EVIDENCIA = {"add_transaction", "update_transaction", "add_event", "add_google_event"}
 
 
