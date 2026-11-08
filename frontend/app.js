@@ -2,7 +2,7 @@
 // Configuração
 // ============================================================
 // Ajuste para a URL onde o FastAPI está rodando.
-const API_BASE = "http://localhost:8000";
+const API_BASE = window.location.origin; // "http://localhost:8000" ou "https://meu-servidor.com"
 const CHAT_ENDPOINT = `${API_BASE}/chat`;
 
 // ============================================================

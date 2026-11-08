@@ -1,0 +1,2 @@
+# zoneinfo precisa da base IANA no Windows; nao altera requirements.txt.
+tzdata==2026.5
